@@ -1,0 +1,15 @@
+.App__hello {
+  display: -webkit-box;
+  display: -ms-flexbox;
+  display: flex;
+  -webkit-box-pack: center;
+      -ms-flex-pack: center;
+          justify-content: center;
+}
+.App__boundingContainer {
+  marginTop: 20;
+  min-height: 800px;
+  width: 800px;
+}
+
+/*# sourceMappingURL=app.css.map*/

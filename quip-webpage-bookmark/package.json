@@ -1,0 +1,17 @@
+{
+    "name": "quip-webpage-bookmark",
+    "version": "0.0.1",
+    "description": "quip-webpage-bookmark Quip App",
+    "license": "UNLICENSED",
+    "scripts": {
+        "start": "NODE_ENV=development webpack-dev-server --https",
+        "build": "NODE_ENV=production webpack; create-quip-app pack ./app"
+    },
+    "author": "",
+    "devDependencies": {
+        "quip-apps-webpack-config": ">=0.0.39"
+    },
+    "dependencies": {
+        "react-sortable-tree": "^2.7.1"
+    }
+}
