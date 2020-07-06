@@ -1,159 +1,298 @@
 import Styles from "./App.less";
-//import 'react-sortable-tree/style.css'; // This only needs to be imported once in your app
-import SortableTree from 'react-sortable-tree';
+
+import { TreeGridComponent, ColumnsDirective, ColumnDirective } from '@syncfusion/ej2-react-treegrid';
+
+import 'styles/bootstrap.css';
+import ss from "../node_modules/slugify/slugify";
 
 export const DEFAULT_API_VERSION = "48.0";
-export const ROOT_PATH = "/services/data/";
+export const ROOT_PATH = "/services/data";
 
-const log = console.log, error = console.error;
+const log = console.log, error = console.error, debug = console.debug;
+const slugify = (s) => {
+    return ss(s, {
+        remove: /[*+~\/\-.()'"!:@]/g,
+        replace: ''
+    })
+}
 
-const sampleTree = [{
-    'title': 'subby',
-    'children': [
-        {
-            'title': '1211',
-            'children': [
-                {
-                    'title': '2122',
-                    'children': []
-                },
-                {
-                    'title': '4133',
-                    'children': []
-                }
-            ]
-        },
-        {
-            'title': '1112',
-            'children': []
-        },
-        {
-            'title': '1113',
-            'children': []
+class TreeItem {
+    static counter() { if (!this.c) this.c = 1; return this.c++; };
+    id;
+    parentId;
+    label;
+    version;
+    url;
+    subtasks;
+    loaded;
+    isParent;
+    constructor(t, v, u) {
+        this.id = TreeItem.counter();
+        this.parentId = undefined;
+        this.label = t;
+        this.version = v;
+        this.url = u;
+        this.isParent = true;
+        this.loaded = false;
+        this.subtasks = [];
+    }
+    //
+    static find(element, field, value, accum) {
+        var out = accum ? accum : [];
+        if(element[field] === value) {
+            out.push(element);
         }
-    ]
-}];
+        element.subtasks.forEach(childElement => 
+            out = TreeItem.find(childElement, field, value, out) 
+        );
+        return out;
+    }
+    static flatten(element, accum) {
+        var out = accum ? accum : [];
+        out.push({
+            id: element.id,
+            parentId: element.parentId,
+            isParent: element.isParent,
+            label: element.label,
+            version: element.version,
+            loaded: element.loaded,
+            url: element.url
+        });
+        element.subtasks.forEach(st => out = TreeItem.flatten(st, out))
+        return out;
+    }
+}
+
 export function getAuth() {
     return quip.apps.auth("oauth2");
 }
 
+export class SalesforceAPIService {
+    //
+    static getData(state) {
+        const { currentTreeItem } = state;
+
+        if (currentTreeItem && currentTreeItem.loaded) 
+            return new Promise(()=>currentTreeItem);
+
+        const getcache = () => {
+                if (!this.__cache) this.__cache = {};
+                return this.__cache; 
+            }, setcacheitem = (e) => {
+                this.__cache = Object.assign(this.__cache, e);
+            },
+            cache = getcache(),
+            tokenResponse = getAuth().getTokenResponse(),
+            url = `${tokenResponse.instance_url}${currentTreeItem.url}`,
+            reqSlug = slugify(url),
+            cacheItem = cache[reqSlug],
+            urlLevel = currentTreeItem.url.split('/').reduce((t,n)=>t+(n.length>0?1:0),0);
+
+        if(cacheItem && cacheItem.loaded) {
+            log(`cache hit: ${reqSlug}`);
+            return new Promise(()=>cacheItem);
+        }
+
+        log(`cache miss: ${reqSlug}, querying ${url}`);
+        return getAuth().request({ url })
+            .then(response => {
+                if (!response.ok) return error("error", response);
+                const parsedResp = response && response.kf ? JSON.parse(response.kf) : [];
+                switch (urlLevel) {
+                    case 2:
+                        currentTreeItem.subtasks = parsedResp.map(e => {
+                            const ti = new TreeItem(e.label, e.version, e.url);
+                            ti.parentId = currentTreeItem.id;
+                            return ti;
+                        });
+                        currentTreeItem.isParent = currentTreeItem.subtasks.length > 0;
+                        currentTreeItem.loaded = true;
+                        break;
+                    case 3:
+                    case 4:
+                    case 5:    
+                        const arr = [], keys = Object.keys(parsedResp);
+                        keys.forEach(k => {
+                            const vv = parsedResp[k], 
+                                ti = new TreeItem(k, currentTreeItem.version, vv);
+                            ti.parentId = currentTreeItem.id;
+                            arr.push(ti);
+                        })
+                        currentTreeItem.subtasks = arr;
+                        currentTreeItem.isParent = currentTreeItem.subtasks.length > 0;
+                        currentTreeItem.loaded = true;
+                        break;                 
+                }
+                const rs = {};
+                rs[reqSlug] = currentTreeItem;
+                setcacheitem(rs);
+
+                return currentTreeItem;
+            });
+    }
+}
+
+const isUserLoggedIn = () => {
+    return getAuth() ? 
+        getAuth().isLoggedIn() :
+        false;
+}
+
 export default class App extends React.Component {
-    constructor(props) {
-        super();
+    constructor() {
+        super(...arguments);
         this.state = {
-            isLoggedIn: getAuth().isLoggedIn(),
+            isLoggedIn: isUserLoggedIn(),
             loadingLogin: false,
         };
     }
-
+    //
     login = () => {
-        console.debug("login");
-        this.setState({loadingLogin: true});
+        debug("login");
+        this.setState({ loadingLogin: true });
         return getAuth()
-            .login({prompt: "login"})
+            .login({ prompt: "login" })
             .then(this.updateIsLoggedIn)
             .finally(() => {
-                this.setState({loadingLogin: false});
+                this.setState({ loadingLogin: false });
             });
     };
-
+    //
     logout = () => {
-        this.setState({loadingLogin: true});
+        this.setState({ loadingLogin: true });
         return getAuth()
             .logout()
             .then(this.updateIsLoggedIn)
             .finally(() => {
-                this.setState({loadingLogin: false});
+                this.setState({ loadingLogin: false });
             });
     };
-
+    //
     updateIsLoggedIn = () => {
         this.setState({
-            isLoggedIn: getAuth().isLoggedIn(),
+            isLoggedIn: isUserLoggedIn()
         });
     };
-
+    //
     render() {
-        const {isLoggedIn} = this.state;
-        const fn = !isLoggedIn ? this.login : this.logout;
-        const text = !isLoggedIn ? "Log in" : "Log out";
+        const { isLoggedIn } = this.state,
+            n = !isLoggedIn ? this.login : this.logout,
+            text = !isLoggedIn ? "Log in" : "Log out";
         return <div>
-            {isLoggedIn &&  <SalesforceNavigator/>}
+            {isLoggedIn && <SalesforceNavigator />}
         </div>;
     }
 }
 
 class SalesforceNavigator extends React.Component {
-    constructor(props) {
-        super();
+    state;
+    treeGridInstance;
+    static dataService = new SalesforceAPIService();
+    constructor() {
+        super(...arguments);
         this.state = {
-            initialLoad: false,
-            rootTreeItem: {
-                title :  `Salesforce`,
-                subTitle : ROOT_PATH,
-                url : ROOT_PATH,
-                children : []
-            },
-            endpoint: ROOT_PATH,
-            treeData: [],
-            curTreeItem: {}
+            rootTreeItem: new TreeItem(`Salesforce`, 'All', ROOT_PATH)
         };
-        this.state.curTreeItem = this.state.rootTreeItem;
-        this.state.treeData.push(this.state.rootTreeItem);
-        log('query for path: ', this.state.endpoint);
-        this.queryEndpoint(ROOT_PATH);
+        this.state.currentTreeItem = this.state.rootTreeItem;
     }
-    queryEndpoint = s => {
-        const {endpoint, treeData, curTreeItem, rootTreeItem} = this.state;
-        const tokenResponse = getAuth().getTokenResponse();
-        const url = `${tokenResponse.instance_url}${endpoint}`;
-        getAuth()
-            .request({url})
-            .then(response => {
-                if (!response.ok) return error("error", response);
-                const ro = response && response.kf ? JSON.parse(response.kf) : [];
-                curTreeItem.children = ro.map(el => {
-                    log(el);
+    //
+    getData() {
+        const isInited = this.treeGridInstance 
+            && this.treeGridInstance.dataSource instanceof Array;
+        if (isInited && !this.state.currentTreeItem.loaded) {
+            this.state.requestType = 'init';
+            this.dataStateChange(this.state);
+        }
+    }
+    //
+    dataStateChange(state) { 
+        const rq = state.requestType ? state.requestType : 'NULL';
+        log(`${rq} dataStateChange()`);
+        if(state.requestType === 'expand') {
+            state.currentTreeItem = TreeItem.find(this.state.rootTreeItem, 'id', state.data.id)[0];
+            if (state.currentTreeItem.loaded) return;
+        }
+        if(state.requestType === 'select') {
+            state.currentTreeItem = TreeItem.find(this.state.rootTreeItem, 'id', state.data.id)[0];
+            if (state.currentTreeItem.loaded) return;
+        }
+        SalesforceAPIService.getData(state).then((currentTreeItem) => {
+            if (state.requestType === 'expand') {
+                state.childData = currentTreeItem.subtasks;
+                state.childDataBind();
+                currentTreeItem.isParent = currentTreeItem.subtasks.length > 0;
+                currentTreeItem.loaded = true;
+                this.setState({currentTreeItem});
+            } else if (state.requestType === 'select') {
+                this.setState({currentTreeItem});
+            } else if (state.requestType === 'init') {
+                currentTreeItem.isParent = currentTreeItem.subtasks.length > 0;
+                currentTreeItem.loaded = true;
+                this.setState({rootTreeItem:currentTreeItem, currentTreeItem});
+            }
+        });
+    }
+    //
+    get items() {
+        const rti = this.state.rootTreeItem,
+            srcItems = rti ? TreeItem.flatten(rti) : [],
+            outItems = srcItems.map(e => { 
                     return {
-                        title : `${el.label} (Version ${el.version})`,
-                        subTitle : el.url,
-                        url : el.url
-                    };
-                });
-                this.setState({
-                    endpoint: url,
-                    treeData: curTreeItem.children,
-                });
-                this.setState({
-                    endpoint: url,
-                    treeData : JSON.parse(ro).map(el => {
-                        const o = {
-                            title : `${el.label} (Version ${el.version})`,
-                            subTitle : el.url,
-                            url : el.url
-                        };
-                        log(o);
-                        return o;
-                    })
-                });
-                this.state.curTreeItem.children = this.state.treeData;
+                    label: e.label,
+                    version: e.version,
+                    url: e.url,
+                    isParent: e.subtasks ? e.subtasks.length > 0 : !e.loaded,
+                    loaded: e.loaded,
+                    parentId: e.parentId,
+                    id: e.id
+                }
             });
-    };
-
-    elementClicked(e) {
-        log(e);
+        return outItems;
     }
-    
+    rowSelected(evt) {
+        if(!evt.data.loaded) {
+            const state = { requestType: 'select', data: { id: evt.data.id } };
+            setTimeout(()=>this.dataStateChange(state),0); 
+        }     
+    }
+    //
     render() {
-        const {initialLoad} = this.state;
-        if(!initialLoad) {
-            this.setState({initialLoad: true});
-            this.queryEndpoint(this.state.endpoint);
-        }
-        const items = []
-        for (const value of this.state.treeData.children) {
-          items.push(<li><a onclick={elementClicked}>{value.title}</a></li>);
-        }
-        return (<div className={Styles.boundingContainer}><ul>{items}</ul></div>);
+        return <div style={{ width:'960px', marginTop: '20px' }}>
+            <TreeGridComponent
+                id="TreeGrid"
+                idMapping='id'
+                parentIdMapping='parentId'
+                childMapping='subtasks'
+                hasChildMapping='isParent'
+                height='410'
+                dataSource={this.items}
+                dataBound={this.getData.bind(this)}
+                ref={treegrid => this.treeGridInstance = treegrid}
+                dataStateChange={this.dataStateChange.bind(this)}
+                allowPaging={false}
+                treeColumnIndex={1}
+                rowSelected={this.rowSelected}>
+                <ColumnsDirective>
+                    <ColumnDirective
+                        field='id'
+                        headerText='Element ID'
+                        width='100'
+                        isPrimaryKey={true}
+                        textAlign='Right'/>
+                    <ColumnDirective
+                        field='label'
+                        headerText='Label'
+                        width='200'/>
+                    <ColumnDirective
+                        field='version'
+                        headerText='Version'
+                        width='100'/>
+                    <ColumnDirective
+                        field='url'
+                        headerText='URL'
+                        width='200'/>
+                </ColumnsDirective>
+            </TreeGridComponent>
+        </div>;
     }
 }
