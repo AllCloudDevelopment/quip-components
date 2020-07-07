@@ -175,11 +175,14 @@ export default class App extends React.Component {
     };
     //
     render() {
-        const { isLoggedIn } = this.state,
-            n = !isLoggedIn ? this.login : this.logout,
-            text = !isLoggedIn ? "Log in" : "Log out";
+        const {isLoggedIn} = this.state;
+        const fn = !isLoggedIn ? this.login : this.logout;
+        const text = !isLoggedIn ? "Log in" : "Log out";
         return <div>
-            {isLoggedIn && <SalesforceNavigator />}
+            <div>
+                <button onClick={fn}>{text}</button>
+            </div>
+            {isLoggedIn && <SalesforceNavigator/>}
         </div>;
     }
 }

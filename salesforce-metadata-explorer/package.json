@@ -1,0 +1,24 @@
+{
+    "name": "salesforce-connected-oauth2",
+    "version": "0.0.1",
+    "description": "salesforce-connected-oauth2 Quip App",
+    "license": "UNLICENSED",
+    "scripts": {
+        "start": "NODE_ENV=development webpack-dev-server --https",
+        "build": "NODE_ENV=development webpack; create-quip-app pack ./app"
+    },
+    "author": "",
+    "devDependencies": {
+        "quip-apps-webpack-config": ">=0.0.29",
+        "ts-loader": "^7.0.5",
+        "typescript": "^3.9.6"
+    },
+    "dependencies": {
+        "@syncfusion/ej2-react-notifications": "^18.1.52",
+        "@syncfusion/ej2-react-treegrid": "^18.1.59",
+        "hashids": "^2.2.1",
+        "prop-types": "^15.7.2",
+        "react-sortable-tree": "^2.7.1",
+        "slugify": "^1.4.4"
+    }
+}
